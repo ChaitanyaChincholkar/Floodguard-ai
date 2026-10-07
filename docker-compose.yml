@@ -28,6 +28,7 @@ services:
       - DATABASE_URL=postgresql+asyncpg://floodguard_user:floodguard_password@db:5432/floodguard
       - REDIS_URL=redis://redis:6379/0
       - DEM_PROVIDER=real
+      - RAINFALL_PROVIDER=synthetic
     ports:
       - "8000:8000"
     volumes:
@@ -47,6 +48,7 @@ services:
       - DATABASE_URL=postgresql+asyncpg://floodguard_user:floodguard_password@db:5432/floodguard
       - REDIS_URL=redis://redis:6379/0
       - DEM_PROVIDER=real
+      - RAINFALL_PROVIDER=synthetic
     volumes:
       - ./backend:/app
     depends_on:

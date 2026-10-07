@@ -10,7 +10,7 @@ from shapely.wkt import dumps as wkt_dumps
 
 from ..database import AsyncSessionLocal
 from ..models import DataSource, WeatherObservation, ModelRun, FloodPrediction, ProviderType, DataStatus, RiskLevel
-from .providers import DevelopmentRainfallProvider
+from .providers import DevelopmentRainfallProvider, IMDRainfallProvider, get_rainfall_provider
 from .celery_app import celery_app
 from ..modeling.dem import get_dem_provider, SyntheticDEMProvider
 from ..modeling.terrain import process_dem_terrain
@@ -18,18 +18,31 @@ from ..modeling.flood_engine import BaselineFloodModel
 
 logger = logging.getLogger(__name__)
 
-async def _ingest_rainfall_async():
-    provider = DevelopmentRainfallProvider()
-    data = await provider.fetch_latest()
+async def _ingest_rainfall_async(provider_type: Optional[str] = None):
+    provider = get_rainfall_provider(provider_type)
     
+    try:
+        data = await provider.fetch_latest()
+        is_real = isinstance(provider, IMDRainfallProvider)
+        db_provider_type = ProviderType.IMD if is_real else ProviderType.DEVELOPMENT
+        db_data_status = DataStatus.OBSERVED if is_real else DataStatus.SIMULATED
+        provider_name = "India Meteorological Department (IMD)" if is_real else "Simulated Development Provider"
+    except Exception as e:
+        logger.warning(f"Rainfall provider failed: {e}. Falling back to DevelopmentRainfallProvider (labeled SIMULATED).")
+        fallback = DevelopmentRainfallProvider()
+        data = await fallback.fetch_latest()
+        db_provider_type = ProviderType.DEVELOPMENT
+        db_data_status = DataStatus.SIMULATED
+        provider_name = "Simulated Development Provider (Fallback: IMD Unavailable)"
+
     async with AsyncSessionLocal() as session:
-        result = await session.execute(select(DataSource).where(DataSource.provider_type == ProviderType.DEVELOPMENT))
+        result = await session.execute(select(DataSource).where(DataSource.provider_type == db_provider_type))
         source = result.scalars().first()
         
         if not source:
             source = DataSource(
-                name="Simulated Development Provider",
-                provider_type=ProviderType.DEVELOPMENT,
+                name=provider_name,
+                provider_type=db_provider_type,
                 data_type="rainfall",
                 health_status="healthy",
                 last_synced=datetime.datetime.now(datetime.timezone.utc)
@@ -46,14 +59,14 @@ async def _ingest_rainfall_async():
                 location=point,
                 rainfall_mm=obs['rainfall_mm'],
                 temperature=obs['temperature'],
-                data_status=DataStatus.SIMULATED
+                data_status=db_data_status
             )
             session.add(new_obs)
             
         source.last_synced = datetime.datetime.now(datetime.timezone.utc)
         source.health_status = "healthy"
         await session.commit()
-        logger.info(f"Ingested {len(data)} simulated rainfall observations.")
+        logger.info(f"Ingested {len(data)} rainfall observations ({db_data_status.value}).")
 
 @celery_app.task(name="ingest_rainfall_data", bind=True, max_retries=3)
 def ingest_rainfall_data(self):

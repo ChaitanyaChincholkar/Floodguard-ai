@@ -72,6 +72,55 @@ async def test_elevation_api_endpoints():
         area_data = res_area.json()
         assert "bounds" in area_data
 
+from app.ingestion.providers import IMDRainfallProvider, IMDMissingCredentialsError, DevelopmentRainfallProvider, get_rainfall_provider
+from app.ingestion.tasks import _ingest_rainfall_async
+
+@pytest.mark.asyncio
+async def test_imd_rainfall_provider_missing_credentials():
+    provider = IMDRainfallProvider(api_key=None)
+    with pytest.raises(IMDMissingCredentialsError):
+        await provider.fetch_latest()
+
+def test_imd_rainfall_provider_normalization():
+    provider = IMDRainfallProvider(api_key="TEST_KEY")
+    raw_response = {
+        "observations": [
+            {
+                "station_id": "43295",
+                "station_name": "Bengaluru AWS",
+                "longitude": 77.59,
+                "latitude": 12.97,
+                "rainfall_mm": 24.5,
+                "temperature": 26.2,
+                "timestamp": "2026-10-07T12:00:00Z"
+            }
+        ]
+    }
+    normalized = provider.normalize_response(raw_response)
+    assert len(normalized) == 1
+    obs = normalized[0]
+    assert obs["station_id"] == "43295"
+    assert obs["rainfall_mm"] == 24.5
+    assert obs["data_status"] == "observed"
+    assert obs["provider"] == "IMDRainfallProvider"
+
+def test_rainfall_provider_factory_selection():
+    imd_prov = get_rainfall_provider("imd")
+    assert isinstance(imd_prov, IMDRainfallProvider)
+
+    dev_prov = get_rainfall_provider("synthetic")
+    assert isinstance(dev_prov, DevelopmentRainfallProvider)
+
+@pytest.mark.asyncio
+async def test_rainfall_async_ingestion_task():
+    await _ingest_rainfall_async(provider_type="synthetic")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get("/api/v1/rainfall/latest")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) > 0
+        assert "rainfall_mm" in data[0]
+
 @pytest.mark.asyncio
 async def test_api_model_run_lifecycle():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -100,4 +149,5 @@ async def test_api_model_run_lifecycle():
         assert "metrics" in stats
         assert "provenance" in stats
         assert stats["provenance"]["disclaimer"] == "DEVELOPMENT MODEL — NOT FOR OPERATIONAL DECISION MAKING"
+
 
