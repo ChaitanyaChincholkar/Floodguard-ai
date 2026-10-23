@@ -5,7 +5,7 @@ from sqlalchemy.orm import declarative_base
 # The database URL for asyncpg, defaulting to localhost for local non-docker runs
 DATABASE_URL = os.getenv(
     "DATABASE_URL", 
-    "postgresql+asyncpg://floodguard_user:floodguard_password@localhost:5432/floodguard"
+    "postgresql+asyncpg://floodguard_user:floodguard_password@localhost:5433/floodguard"
 )
 
 # Async engine
