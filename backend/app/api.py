@@ -263,13 +263,14 @@ async def get_model_run_statistics(run_id: int, db: AsyncSession = Depends(get_d
         "risk_counts": {"low": 0, "moderate": 0, "high": 0, "severe": 0}
     }
     
-    is_real = "Copernicus" in (run.dem_source or "")
-    
+    is_real_dem = "Copernicus" in (run.dem_source or "")
+    is_real_rain = run.data_status == models.DataStatus.OBSERVED
+
     provenance = {
-        "rainfall_source": "DevelopmentRainfallProvider",
-        "rainfall_status": "SIMULATED",
+        "rainfall_source": "India Meteorological Department (IMD)" if is_real_rain else "DevelopmentRainfallProvider (Simulated)",
+        "rainfall_status": run.data_status.value.upper() if run.data_status else "SIMULATED",
         "dem_source": run.dem_source or "Copernicus DEM GLO-30",
-        "dem_status": "OBSERVED" if is_real else "SIMULATED",
+        "dem_status": "OBSERVED" if is_real_dem else "SIMULATED",
         "model_name": run.model_name,
         "model_version": run.model_version,
         "disclaimer": "DEVELOPMENT MODEL — NOT FOR OPERATIONAL DECISION MAKING"

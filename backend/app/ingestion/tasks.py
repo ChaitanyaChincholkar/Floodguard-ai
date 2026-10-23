@@ -3,6 +3,7 @@ import time
 import json
 import datetime
 import logging
+from typing import Optional
 from sqlalchemy import select
 from geoalchemy2.elements import WKTElement
 from shapely.geometry import shape
@@ -71,11 +72,7 @@ async def _ingest_rainfall_async(provider_type: Optional[str] = None):
 @celery_app.task(name="ingest_rainfall_data", bind=True, max_retries=3)
 def ingest_rainfall_data(self):
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_closed():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        loop.run_until_complete(_ingest_rainfall_async())
+        asyncio.run(_ingest_rainfall_async())
     except Exception as e:
         logger.error(f"Error ingesting rainfall: {e}")
         self.retry(exc=e, countdown=10)
@@ -174,11 +171,7 @@ async def _run_flood_model_async(run_id: int):
 @celery_app.task(name="run_flood_model_task", bind=True, max_retries=2)
 def run_flood_model_task(self, run_id: int):
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_closed():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        loop.run_until_complete(_run_flood_model_async(run_id))
+        asyncio.run(_run_flood_model_async(run_id))
     except Exception as e:
         logger.error(f"Error running flood model task: {e}")
         self.retry(exc=e, countdown=5)
